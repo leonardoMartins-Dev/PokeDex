@@ -1,120 +1,142 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useCallback, useLayoutEffect, useState } from 'react'
+import data from './data/pokedex-data.json'
+import IntroAnimation from './components/IntroAnimation'
+import Pokeball from './components/Pokeball'
+import ThemeToggle from './components/ThemeToggle'
+import PokemonList from './components/PokemonList'
+import PokemonDetails from './components/PokemonDetails'
+import SearchBar from './components/SearchBar'
+import TypeFilter from './components/TypeFilter'
+import TrainerList from './components/TrainerList'
+import ViewTabs from './components/ViewTabs'
+import { readStorage, writeStorage } from './utils/storage'
 import './App.css'
+import './themes/classic.css'
+import './themes/modern.css'
+
+const pokemons = data.pokemon
+const pokemonById = new Map(pokemons.map((pokemon) => [pokemon.id, pokemon]))
+
+// Junta cada treinador com os dados completos dos seus Pokémon (o JSON só traz os IDs)
+const trainers = data.trainers.map((trainer) => ({
+  ...trainer,
+  team: trainer.pokemonIds.map((id) => pokemonById.get(id)),
+}))
+
+// Só os tipos que algum Pokémon realmente tem (o JSON também traz "Typeless" e "Dark", sem nenhum)
+const availableTypes = data.types.filter((type) =>
+  pokemons.some((pokemon) => pokemon.types.some((t) => t.id === type.id)),
+)
+
+// Quem pede menos animação no sistema não vê a intro
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [theme, setTheme] = useState(() => (readStorage('theme') === 'modern' ? 'modern' : 'classic'))
+  const [showIntro, setShowIntro] = useState(!prefersReducedMotion)
+  const [introPokemon] = useState(() => pokemons[Math.floor(Math.random() * pokemons.length)])
+  const [search, setSearch] = useState('')
+  const [selectedType, setSelectedType] = useState(null)
+  const [view, setView] = useState('pokedex')
+  const [selectedId, setSelectedId] = useState(null)
+  // Lista que as setas da Pokédex percorrem: a lista filtrada ou o time do treinador
+  const [browseIds, setBrowseIds] = useState([])
+
+  // O tema vai no <html> para valer também no modal (que o Mantine renderiza fora do App)
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme
+    writeStorage('theme', theme)
+  }, [theme])
+
+  const finishIntro = useCallback(() => setShowIntro(false), [])
+
+  // Estado derivado: a lista filtrada é calculada a partir da busca e do tipo, sem useState próprio
+  const term = search.trim().toLowerCase().replace('#', '')
+  const filteredPokemons = pokemons.filter((pokemon) => {
+    const matchesSearch =
+      pokemon.name.toLowerCase().includes(term) || String(pokemon.id).includes(term)
+    const matchesType =
+      selectedType === null || pokemon.types.some((type) => type.id === selectedType)
+    return matchesSearch && matchesType
+  })
+
+  const selectedPokemon = pokemonById.get(selectedId) ?? null
+
+  function openPokemon(id, ids) {
+    setSelectedId(id)
+    setBrowseIds([...new Set(ids)]) // sem repetidos (ex.: os 3 Venonat do Koga)
+  }
+
+  // Anterior/próximo dando a volta no começo e no fim da lista
+  function showNeighbor(step) {
+    const index = browseIds.indexOf(selectedId)
+    const next = (index + step + browseIds.length) % browseIds.length
+    setSelectedId(browseIds[next])
+  }
+
+  function clearFilters() {
+    setSearch('')
+    setSelectedType(null)
+  }
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      {showIntro && <IntroAnimation pokemon={introPokemon} theme={theme} onFinish={finishIntro} />}
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <div className="brand">
+            <Pokeball className="brand-icon" />
+            <div>
+              <h1>Pokédex</h1>
+              <p>{pokemons.length} Pokémon de Kanto</p>
+            </div>
+          </div>
+          <ViewTabs view={view} onChange={setView} />
+          <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+      <main className="app">
+        {view === 'pokedex' ? (
+          <>
+            <div className="toolbar">
+              <SearchBar value={search} onChange={setSearch} />
+              <TypeFilter types={availableTypes} selected={selectedType} onSelect={setSelectedType} />
+            </div>
+
+            <p className="result-count">{filteredPokemons.length} Pokémon encontrados</p>
+
+            {filteredPokemons.length === 0 ? (
+              <div className="empty">
+                <p>Nenhum Pokémon encontrado com esses filtros.</p>
+                <button type="button" className="filter-button active" onClick={clearFilters}>
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <PokemonList
+                pokemons={filteredPokemons}
+                theme={theme}
+                onSelect={(id) => openPokemon(id, filteredPokemons.map((pokemon) => pokemon.id))}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            <p className="result-count">{trainers.length} treinadores de Kanto</p>
+            <TrainerList trainers={trainers} theme={theme} onSelectPokemon={openPokemon} />
+          </>
+        )}
+      </main>
+
+      <PokemonDetails
+        pokemon={selectedPokemon}
+        theme={theme}
+        onClose={() => setSelectedId(null)}
+        onPrev={() => showNeighbor(-1)}
+        onNext={() => showNeighbor(1)}
+      />
     </>
   )
 }
